@@ -20,18 +20,18 @@ step_1_load_data <- function() {
   # Load the various files we need - put data in a folder called 'data' under the dir where the R script is
   data_filename <- "./Data/timevis_data.csv"
   
-  # If all rows were deleted or starting from scratch then cerate empty dataframe else read the file
   df_timevis_data <<- tryCatch({
+  # If file exists but is empty create an empty dataframe
+    if (file.size(data_filename) < 10 || is.na(file.size(data_filename))) {
     
-    if (file.size(data_filename) < 10) {
       df <- data.frame(
         id=numeric(0),
         content=character(0),
-        start=date,
+        start=as.Date(character()),
+        ebd=as.Date(character()),
         group=character(0),
         stringsAsFactors = FALSE
       )
-      df
     } else {
     read.csv(data_filename, header=TRUE)
     }
@@ -189,75 +189,15 @@ media_plan_server <- function(input, output, session) {
 ### Section - Reactives ################################################################
 #+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
   # Initialise reatives
-<<<<<<< HEAD
   RV <- reactiveValues(df_timevis_data = df_timevis_data)
+  
 #+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 ### Section -  Observations ############################################################
 #+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-  # Change in data
-=======
-  RV <- reactiveValues()
-  RV$df_timevis_data = df_timevis_data
   
-  # output$phase_strategy_dt <- renderDataTable({
-  #   datatable(step_2_phase_strategy_alignment())
-  # })
-
-# Outputs ---------------------------------------
-# Display timevis
-  output$media_plan_timeline <- renderTimevis({
-    config <- list(
-      editable = TRUE
-      ,align = 'center'
-      ,orientation = 'top'
-      ,snap = NULL
-      ,margin = list(item =50, axis = 50)
-    )
-    timevis(data = df_timevis_data, groups = df_group, fit = TRUE, zoomFactor = 1, options = config)
-  })
-  
-  # Display datatable
-  output$phase_strategy_dt <- renderDataTable({
-    if (!is.null(nrow(input$media_plan_timeline_data))) {
-      if ("end" %in% colnames(input$media_plan_timeline_data)) {
-        
-        str(RV$df_timevis_data)
-        print(as.POSIXct(input$media_plan_timeline_data$start))
-        print(as.Date(input$media_plan_timeline_data$start, format = "%Y-%m"))
-        
-        datatable(RV$df_timevis_data,
-                  rownames = FALSE,
-                  class = "cell-border stripe",
-                  options = list(
-                  sDom = '<"top">lrt<"bottom">ip'
-                  )
-                )
-      } else {
-        datatable(RV$df_timevis_data,
-                  rownames = FALSE,
-                  class = "cell-border stripe",
-                  options = list(
-                    sDom = '<"top">lrt<"bottom">ip'
-                  )
-        ) %>%
-          formatDate("start", "toDateString")
-      }
-    }
-  })
-  
-  output$check_item_end_date <- renderUI({
-    dateInput("item_end_date", "End Date:")
-  })
-  
-  output$remove_items <- renderUI({
-    selectInput("remove_selected_items", "Choose an item (pick ID number) to delete:",input$media_plan_timeline_ids, multiple = TRUE)
-  })
-  
-# Observations ----------------------------------
->>>>>>> 6e22921ba63a4759abfd84a07fe7c4c985770c48
+  # Look for change in data on timevis
   observeEvent(input$media_plan_timeline_data, {
-    print("1")
-    RV$df_timevis_data <- input$media_plan_timeline_data
+    RV$df_timevis_data <- as.data.frame(input$media_plan_timeline_data)
     write.csv(RV$df_timevis_data, file = "./Data/timevis_data.csv", row.names = FALSE)
   })
   
@@ -303,15 +243,12 @@ media_plan_server <- function(input, output, session) {
     removeItem("media_plan_timeline", input$remove_selected_items)
   })
   
-  observeEvent(input$media_plan_timeline_data, {
-    # df <- sp_2_create_phase_strategy_links(as.data.frame(RV$df_timevis_data))
-  })
-  
 #+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 ### Section - Tab - Strategy and Phase Outputs #########################################
 #+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 # Display timevis
   output$media_plan_timeline <- renderTimevis({
+    # Set up config list for timevis display
     config <- list(
       editable = TRUE
       ,align = 'center'
@@ -324,10 +261,7 @@ media_plan_server <- function(input, output, session) {
   
   # Display datatable
   output$phase_strategy_dt <- renderDataTable({
-    
-    # If table not empty display rows
     if (!is.null(nrow(input$media_plan_timeline_data))) {
-        
         datatable(RV$df_timevis_data,
                   rownames = FALSE,
                   class = "cell-border stripe",
@@ -339,10 +273,6 @@ media_plan_server <- function(input, output, session) {
     }
     
   })
-  
-  # output$check_item_end_date <- renderUI({
-  #   dateInput("item_end_date", "End Date:")
-  # })
   
   output$remove_items <- renderUI({
     selectInput("remove_selected_items", "Choose an item (pick ID number) to delete:",input$media_plan_timeline_ids, multiple = TRUE)
