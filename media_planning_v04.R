@@ -4,6 +4,7 @@ step_0_initialise <- function() {
   library(timevis)
   library(DT)
   library(dplyr)
+  library(rhandsontable)
 }
 #+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 ### Section - Functions - Load Data  #############################################
@@ -40,12 +41,46 @@ step_1_load_data <- function() {
   # Read the group data  
   group_filename <- "./Data/group_data.csv"
   df_group <<- read.csv(group_filename, header=TRUE)
+  
+  # Read Country data
+  country_filename <- "./Data/country_data.csv"
+  df_country <<- read.csv(country_filename, header=TRUE)
+  df_country <- data.frame(df_country, stringsAsFactors = FALSE)
 }
 
 #+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+### Section - Function Create Phase & Strategy df's ####################################
+#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+step_2_create_phase_strategy_df <- function(df) {
+  # Set up return df's
+  return_values <- list(df_strategy = NULL, df_phase = NULL)
+  
+  # Create Phase df
+  df_phase <- df %>%
+    filter(group == "Phase") %>%
+    select("phase" = content)
+  
+  if (nrow(df_phase) > 0) {
+    df_phase$id <- 1:nrow(df_phase)
+    df_phase <- subset(df_phase, select=c(id, phase))
+  }
+  # Create Strategy df
+  df_strategy <- df %>%
+    filter(group == "Strategy") %>%
+    select("strategy" = content)
+  
+  
+  if (nrow(df_strategy) > 0) {
+    df_strategy$id <- 1:nrow(df_strategy)
+    df_strategy <- subset(df_strategy, select=c(id, strategy))
+  }
+  
+  return(return_values)
+}
+#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 ### Section - Function Create Phase/Strategies #########################################
 #+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-step_2_create_phase_strategy_links <- function(df) {
+step_3_create_phase_strategy_links <- function(df) {
   
   # Create empty df to hold all phasr strategy links
   df_phase_strategy_links <- data.frame(
@@ -62,6 +97,9 @@ step_2_create_phase_strategy_links <- function(df) {
   all_strategies <- df %>%
     filter(group == "Strategy")
   
+  # Create empty target dataframe for the phase / strategy link output
+  df_phase_strategy_links <- data.frame(id=numeric(), phase=character(), strategy=character(), stringsAsFactors = FALSE)
+  
   # Process each phase - find matching strategies
   for (phase in 1:nrow(all_phases)) {
     
@@ -72,24 +110,27 @@ step_2_create_phase_strategy_links <- function(df) {
     strategy_start_date_within <- filter(all_strategies, between(as.Date(start), as.Date(this_phase$start), as.Date(this_phase$end)))
     strategy_end_date_within <- filter(all_strategies, between(as.Date(end), as.Date(this_phase$start), as.Date(this_phase$end)))
     phase_dates_within <- filter(all_strategies, as.Date(start) <= as.Date(this_phase$start) & as.Date(end) >= as.Date(this_phase$end) ) 
-    
+  
     # Combine the matches
     all_matches <- rbind(strategy_start_date_within, strategy_end_date_within, phase_dates_within)
     all_matches <- distinct(all_matches, content, .keep_all = TRUE)
-    
-    # Create the Phase/Strategy match output for this phase
-    for (match in 1:nrow(all_matches)) {
-  
-      # Get next Id
-      all_ids <- as.integer(df_phase_strategy_links$id)
-      if (length(all_ids) > 0) {
-        new_id <- max(all_ids) + 1
-      } else {
-        new_id = 1
-      }
+   
+    # Check it there's anything to match to
+    if (nrow(all_matches) > 0) {
      
-      this_match <- all_matches[match,]
-      df_phase_strategy_links[new_id,] <- c(new_id, this_phase$content, this_match$content)
+      # Create the Phase/Strategy match output for this phase
+      for (match in 1:nrow(all_matches)) {
+    
+        # Get next Id
+        all_ids <- as.integer(df_phase_strategy_links$id)
+        if (length(all_ids) > 0) {
+          new_id <- max(all_ids) + 1
+        } else {
+          new_id = 1
+        }
+        this_match <- all_matches[match,]
+        df_phase_strategy_links[new_id,] <- c(new_id, this_phase$content, this_match$content)
+      }
     }
   }
   # Return the phase/strategy links
@@ -110,17 +151,16 @@ media_plan_ui <- dashboardPage(
   dashboardHeader(title = "Media Plan Management"),
   dashboardSidebar(
     sidebarMenu(
-      menuItem("Phases and Strategy",      tabName = "strategy_phase",      icon = icon("database",      "fa-1x")),
-      menuItem("Countries",      tabName = "countries",           icon = icon("database",      "fa-1x"))
+      menuItem("Phases and Strategy",         tabName = "strategy_phase",      icon = icon("database",      "fa-1x")),
+      menuItem("Countries",                   tabName = "countries",           icon = icon("database",      "fa-1x"))
     )
   ),
     dashboardBody(
+      tags$head(includeCSS("www/style.css")),
       fluidRow(
         tabItems(
           tabItem(tabName = "strategy_phase",
-            tags$head(
-              tags$link(rel = "stylesheet", type = "text/css", href = "custom.css")
-            ),
+            
             fluidRow(
               box(title = "Media Plan Timeline", solidHeader = TRUE, status = "primary", width = 12,
                 timevisOutput("media_plan_timeline")
@@ -133,7 +173,7 @@ media_plan_ui <- dashboardPage(
                   tags$tr(style = "border-bottom:solid 1px #3c8dbc;",
                     tags$td(style = "width: 20%",
                       align = "middle",
-                      textInput("item_text", "Enter content:", "New item content")
+                      textInput("item_text", "Enter Phase / Strategy name:", "New item content")
                     ),
                     tags$td(style = "width: 10%",
                       align = "middle",
@@ -155,7 +195,9 @@ media_plan_ui <- dashboardPage(
                   tags$tr(
                     tags$td(style = "width: 20%; padding-top: 10px;"),
                     tags$td(style = "width: 10%; padding-top: 10px;"),
-                    tags$td(style = "width: 10%; padding-top: 10px;"),
+                    tags$td(style = "width: 10%; padding-top: 10px;", align = "middle",
+                            verbatimTextOutput("error_message"),
+                    ),
                     tags$td(style = "width: 10%; padding-top: 10px;", align = "middle",
                             uiOutput("remove_items"),
                     ),
@@ -175,21 +217,26 @@ media_plan_ui <- dashboardPage(
             ) # row end
           ), #tab end
           tabItem(tabName = "countries",
+                  rHandsontableOutput("hot")
           ) # tab end
         )
       )
     )
 )
 
-#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-### Section - Server ###################################################################
-#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+### Section - Server ##################################################
+#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 media_plan_server <- function(input, output, session) {
-#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 ### Section - Reactives ################################################################
 #+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
   # Initialise reatives
-  RV <- reactiveValues(df_timevis_data = df_timevis_data)
+  rv1 <- reactiveValues(df_timevis_data = df_timevis_data)
+  rv2 <- reactiveValues(df_phase_strategy = NULL)
+  rv3 <- reactiveValues(error_message = NULL)
+  rv4 <- reactiveValues(df_phase = NULL)
+  rv5 <- reactiveValues(df_strategy = NULL)
   
 #+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 ### Section -  Observations ############################################################
@@ -197,8 +244,29 @@ media_plan_server <- function(input, output, session) {
   
   # Look for change in data on timevis
   observeEvent(input$media_plan_timeline_data, {
-    RV$df_timevis_data <- as.data.frame(input$media_plan_timeline_data)
-    write.csv(RV$df_timevis_data, file = "./Data/timevis_data.csv", row.names = FALSE)
+    # Save current tinevis data as a reactive dataframe
+    rv1$df_timevis_data <- as.data.frame(input$media_plan_timeline_data)
+    
+    # Check changes made to timevis timeline end dates are not equal to start dates - if not print an error message
+    if (!is.null(nrow(input$media_plan_timeline_data))) {
+      for (row in 1:nrow(rv1$df_timevis_data)) {
+        this_row = rv1$df_timevis_data[row,]
+        if (this_row$start <= this_row$end) {
+          msg = paste("Error: Start and End dates cannot be the same for item: ", this_row$content)
+          rv3$error_message = paste(" ", msg, sep = "\n")
+        }
+      }
+    }
+    #Save data to file
+    write.csv( rv1$df_timevis_data, file = "./Data/timevis_data.csv", row.names = FALSE)
+    
+    # Create Phase and Strategy df's
+    selected_vars <- step_2_create_phase_strategy_df(rv1$df_timevis_data)
+    rv4$df_phase <- selected_vars$df_phase
+    rv5$df_strategy <- selected_vars$df_strategy
+    
+    # Calculate phase / strategy relationships
+    rv2$df_phase_strategy <- step_3_create_phase_strategy_links(rv1$df_timevis_data)
   })
   
   # Add a new strategy or phase
@@ -217,15 +285,11 @@ media_plan_server <- function(input, output, session) {
     
     # If start date equals end date then leave end date out - it's not a ranged item
     if (input$item_start_date == input$item_end_date) {
-      addItem("media_plan_timeline",
-              data = list(
-                id = new_id,
-                content = input$item_text,
-                start = input$item_start_date,
-                group = input$select_group
-              )
-      )
+      msg = paste("Error: Start and End dates cannot be the same for item: ", input$item_text)
+      rv3$error_message = paste("", msg, sep = "\n")
+
     } else {
+      rv3$error_message = ""
       addItem("media_plan_timeline",
               data = list(
                 id = new_id,
@@ -244,8 +308,8 @@ media_plan_server <- function(input, output, session) {
   })
   
 #+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-### Section - Tab - Strategy and Phase Outputs #########################################
-#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+### Section - Tab - Strategy and Phase Outputs ########################
+  #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 # Display timevis
   output$media_plan_timeline <- renderTimevis({
     # Set up config list for timevis display
@@ -256,13 +320,13 @@ media_plan_server <- function(input, output, session) {
       ,snap = NULL
       ,margin = list(item =50, axis = 50)
     )
-    timevis(data = RV$df_timevis_data, groups = df_group, fit = TRUE, zoomFactor = 1, options = config)
+    timevis(data =  rv1$df_timevis_data, groups = df_group, fit = TRUE, zoomFactor = 1, options = config)
   })
   
   # Display datatable
   output$phase_strategy_dt <- renderDataTable({
     if (!is.null(nrow(input$media_plan_timeline_data))) {
-        datatable(RV$df_timevis_data,
+        datatable( rv1$df_timevis_data,
                   rownames = FALSE,
                   class = "cell-border stripe",
                   options = list(
@@ -277,15 +341,36 @@ media_plan_server <- function(input, output, session) {
   output$remove_items <- renderUI({
     selectInput("remove_selected_items", "Choose an item (pick ID number) to delete:",input$media_plan_timeline_ids, multiple = TRUE)
   })
+  
+  output$error_message <- renderText({
+    rv3$error_message
+  })
+
+#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+### Section - Tab - Add Country #####################################
+#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+  output$hot <- renderRHandsontable({
+    df <-  rv2$df_phase_strategy %>%
+      select("Phase/Strategy Name" = content, "Phase/Strategy" = group)
+   
+    # Add countrt cols to phase/strategy combos
+    country_cols <- as.character(df_country$country_code)
+    df[, country_cols] <- FALSE
+    
+    # Displey table
+    rhandsontable(df)
+    #   hot_context_menu(allowRowEdit = FALSE, allowColEdit = TRUE)
+  })
+
 }
-#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-### Section - Start App - ##############################################################
-#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+### Section - Start App - ###########################################
+#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 Start_App <- function() {
   shinyApp(ui = media_plan_ui,
            server = media_plan_server)  
 }
-#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-### Section - Run the App ##############################################################
-#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+### Section - Run the App ###########################################
+#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 Start_App()
