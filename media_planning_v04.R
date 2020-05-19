@@ -1,3 +1,6 @@
+#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+### Section - Initialise libraries ##################################
+#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 step_0_initialise <- function() {
   library(shiny)
   library(shinydashboard)
@@ -6,18 +9,17 @@ step_0_initialise <- function() {
   library(dplyr)
   library(rhandsontable)
 }
-#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-### Section - Functions - Load Data  #############################################
-#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+### Section - Functions - Load Data  ################################
+#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 step_1_load_data <- function() {
   #--------#
   # Import #
   #--------#
-  
   # Find current dir and set working dir
   wd <- dirname(rstudioapi::getSourceEditorContext()$path)
   setwd(wd)
-  
+  print(wd)
   # Load the various files we need - put data in a folder called 'data' under the dir where the R script is
   data_filename <- "./Data/timevis_data.csv"
   
@@ -41,19 +43,22 @@ step_1_load_data <- function() {
   # Read the group data  
   group_filename <- "./Data/group_data.csv"
   df_group <<- read.csv(group_filename, header=TRUE)
+ 
+  # Read Channel data
+  channel_filename <- "./Data/channel_data.csv"
+  df_channel <<- read.csv(channel_filename, header=TRUE)
   
   # Read Country data
   country_filename <- "./Data/country_data.csv"
   df_country <<- read.csv(country_filename, header=TRUE)
-  df_country <- data.frame(df_country, stringsAsFactors = FALSE)
+  # df_country <<- data.frame(df_country, stringsAsFactors = FALSE)
+  
 }
 
-#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 ### Section - Function Create Phase & Strategy df's ####################################
 #+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 step_2_create_phase_strategy_df <- function(df) {
-  # Set up return df's
-  return_values <- list(df_strategy = NULL, df_phase = NULL)
   
   # Create Phase df
   df_phase <- df %>%
@@ -69,19 +74,19 @@ step_2_create_phase_strategy_df <- function(df) {
     filter(group == "Strategy") %>%
     select("strategy" = content)
   
-  
   if (nrow(df_strategy) > 0) {
     df_strategy$id <- 1:nrow(df_strategy)
     df_strategy <- subset(df_strategy, select=c(id, strategy))
   }
   
+  return_values <- list("df_strategy" = df_strategy, "df_phase" = df_phase)
   return(return_values)
 }
 #+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 ### Section - Function Create Phase/Strategies #########################################
 #+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 step_3_create_phase_strategy_links <- function(df) {
-  
+ 
   # Create empty df to hold all phasr strategy links
   df_phase_strategy_links <- data.frame(
     id=numeric(0),
@@ -97,70 +102,100 @@ step_3_create_phase_strategy_links <- function(df) {
   all_strategies <- df %>%
     filter(group == "Strategy")
   
-  # Create empty target dataframe for the phase / strategy link output
-  df_phase_strategy_links <- data.frame(id=numeric(), phase=character(), strategy=character(), stringsAsFactors = FALSE)
+  # If there are both at least one Strategy and one Phase then process them
+  if (!(nrow(all_phases) == 0 || nrow(all_strategies) == 0 )) {
   
-  # Process each phase - find matching strategies
-  for (phase in 1:nrow(all_phases)) {
-    
-    # Assign this phase to a variable
-    this_phase <- all_phases[phase,]
-    
-    # Find all strategies with dates within the phase dates
-    strategy_start_date_within <- filter(all_strategies, between(as.Date(start), as.Date(this_phase$start), as.Date(this_phase$end)))
-    strategy_end_date_within <- filter(all_strategies, between(as.Date(end), as.Date(this_phase$start), as.Date(this_phase$end)))
-    phase_dates_within <- filter(all_strategies, as.Date(start) <= as.Date(this_phase$start) & as.Date(end) >= as.Date(this_phase$end) ) 
-  
-    # Combine the matches
-    all_matches <- rbind(strategy_start_date_within, strategy_end_date_within, phase_dates_within)
-    all_matches <- distinct(all_matches, content, .keep_all = TRUE)
-   
-    # Check it there's anything to match to
-    if (nrow(all_matches) > 0) {
+    # Process each phase - find matching strategies, if any
+    for (phase in 1:nrow(all_phases)) {
      
-      # Create the Phase/Strategy match output for this phase
-      for (match in 1:nrow(all_matches)) {
-    
-        # Get next Id
-        all_ids <- as.integer(df_phase_strategy_links$id)
-        if (length(all_ids) > 0) {
-          new_id <- max(all_ids) + 1
-        } else {
-          new_id = 1
+      # Assign this phase to a variable
+      this_phase <- all_phases[phase,]
+      
+      # Find all strategies with dates within the phase dates
+      strategy_start_date_within <- filter(all_strategies, between(as.Date(start), as.Date(this_phase$start), as.Date(this_phase$end)))
+      strategy_end_date_within <- filter(all_strategies, between(as.Date(end), as.Date(this_phase$start), as.Date(this_phase$end)))
+      phase_dates_within <- filter(all_strategies, as.Date(start) <= as.Date(this_phase$start) & as.Date(end) >= as.Date(this_phase$end) ) 
+      
+      # Combine the matches
+      all_matches <- rbind(strategy_start_date_within, strategy_end_date_within, phase_dates_within)
+      all_matches <- distinct(all_matches, content, .keep_all = TRUE)
+     
+      # Check it there's anything to match to
+      if (nrow(all_matches) > 0) {
+       
+        # Create the Phase/Strategy match output for this phase
+        for (match in 1:nrow(all_matches)) {
+      
+          # Get next Id
+          all_ids <- as.integer(df_phase_strategy_links$id)
+          
+          if (length(all_ids) > 0) {
+            new_id <- max(all_ids) + 1
+          } else {
+            new_id = 1
+          }
+          this_match <- all_matches[match,]
+          df_phase_strategy_links[new_id,] <- c(new_id, this_phase$content, this_match$content)
         }
-        this_match <- all_matches[match,]
-        df_phase_strategy_links[new_id,] <- c(new_id, this_phase$content, this_match$content)
       }
     }
   }
+ 
   # Return the phase/strategy links
   return(df_phase_strategy_links)
 }
 
-#==================================#
-# Initialize before running the UI #
-#==================================#
+#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+### Section - Function Add Channel COls #############################
+#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+step_4_add_country_cols <- function(df) {
+  
+  # return_values <- list("df_channel_links" = NULL, "channel_cols" = 333, "first" = 1000)
+  
+  # Get all the Strategy / Phase links
+  df_channel_links <-  as.data.frame(df) %>%
+    select("Phase" = phase, "Strategy" = strategy)
+  
+  # Add channel cols to phase/strategy combos
+  channel_cols <- as.character(df_channel$channel)
+
+  # Wrap col headers
+  for (col in channel_cols) {
+    if (nchar(col) > 12) {
+      col <- strwrap(col, width = 12)
+    }
+  }
+  
+  # Add all channels as columns
+  df_channel_links[, channel_cols] <- FALSE
+  
+  return_values = list("df_channel_links" = df_channel_links, "channel_cols" = channel_cols)
+  return(return_values)
+}
+#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+### Section - Initialize before running the UI ######################
+#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 step_0_initialise()
 step_1_load_data()
 
-#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-### Section - User Interface ###########################################################
-#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+### Section - User Interface ########################################
+#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 media_plan_ui <- dashboardPage(
-  
+### UI - Dashboard Header ###########################################
   dashboardHeader(title = "Media Plan Management"),
   dashboardSidebar(
     sidebarMenu(
-      menuItem("Phases and Strategy",         tabName = "strategy_phase",      icon = icon("database",      "fa-1x")),
-      menuItem("Countries",                   tabName = "countries",           icon = icon("database",      "fa-1x"))
+      menuItem("Phases and Strategy",         tabName = "strategy_phase",           icon = icon("database",      "fa-1x")),
+      menuItem("Channels and Countries",      tabName = "channels_countries",       icon = icon("globe",         "fa-1x"))
     )
   ),
     dashboardBody(
       tags$head(includeCSS("www/style.css")),
       fluidRow(
         tabItems(
+### UI - Strategy / Phase Creation ##################################
           tabItem(tabName = "strategy_phase",
-            
             fluidRow(
               box(title = "Media Plan Timeline", solidHeader = TRUE, status = "primary", width = 12,
                 timevisOutput("media_plan_timeline")
@@ -181,7 +216,7 @@ media_plan_ui <- dashboardPage(
                     ),
                     tags$td(style = "width: 10%",
                       align = "middle",
-                      dateInput("item_end_date", "Enter end date (if applicable):")
+                      dateInput("item_end_date", value = Sys.Date()+1, "Enter end date (if applicable):")
                     ),              
                     tags$td(style = "width: 10%",
                       align = "middle",
@@ -216,27 +251,37 @@ media_plan_ui <- dashboardPage(
               )
             ) # row end
           ), #tab end
-          tabItem(tabName = "countries",
-                  rHandsontableOutput("hot")
+### UI - Add Countries and Channels #######################
+          tabItem(tabName = "channels_countries",
+                  tabsetPanel(
+                    tabPanel("Add Channels",
+                      rHandsontableOutput("hot_channels")
+                    ),
+                    tabPanel("Add Countries",
+                             rHandsontableOutput("hot_countries")
+                    )
+                  ) # end tabsetpanel
           ) # tab end
         )
       )
     )
 )
 
-#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-### Section - Server ##################################################
-#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+### Section - Server ################################################
+#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 media_plan_server <- function(input, output, session) {
-#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 ### Section - Reactives ################################################################
 #+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
   # Initialise reatives
   rv1 <- reactiveValues(df_timevis_data = df_timevis_data)
-  rv2 <- reactiveValues(df_phase_strategy = NULL)
+  rv2 <- reactiveValues(df_phase_strategy_links = NULL)
   rv3 <- reactiveValues(error_message = NULL)
   rv4 <- reactiveValues(df_phase = NULL)
   rv5 <- reactiveValues(df_strategy = NULL)
+  rv6 <- reactiveValues(df_phase_strategy_channel_links = NULL)
+  rv7 <- reactiveValues(channel_cols = NULL)
   
 #+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 ### Section -  Observations ############################################################
@@ -244,32 +289,41 @@ media_plan_server <- function(input, output, session) {
   
   # Look for change in data on timevis
   observeEvent(input$media_plan_timeline_data, {
+    
     # Save current tinevis data as a reactive dataframe
     rv1$df_timevis_data <- as.data.frame(input$media_plan_timeline_data)
     
-    # Check changes made to timevis timeline end dates are not equal to start dates - if not print an error message
+    # Check there are entries in the timevis
     if (!is.null(nrow(input$media_plan_timeline_data))) {
+      # Check changes made to timevis timeline end dates are not less than or equal to start dates - if not print an error message  
       for (row in 1:nrow(rv1$df_timevis_data)) {
         this_row = rv1$df_timevis_data[row,]
-        if (this_row$start <= this_row$end) {
-          msg = paste("Error: Start and End dates cannot be the same for item: ", this_row$content)
+        if (this_row$end <= this_row$start) {
+          msg = paste("Error: End date must be greater than Start date - item: ", this_row$content)
           rv3$error_message = paste(" ", msg, sep = "\n")
+        } else {
+          rv3$error_message = ""
         }
       }
-    }
-    #Save data to file
-    write.csv( rv1$df_timevis_data, file = "./Data/timevis_data.csv", row.names = FALSE)
     
-    # Create Phase and Strategy df's
-    selected_vars <- step_2_create_phase_strategy_df(rv1$df_timevis_data)
-    rv4$df_phase <- selected_vars$df_phase
-    rv5$df_strategy <- selected_vars$df_strategy
-    
-    # Calculate phase / strategy relationships
-    rv2$df_phase_strategy <- step_3_create_phase_strategy_links(rv1$df_timevis_data)
+      #Save data to file
+      write.csv( rv1$df_timevis_data, file = "./Data/timevis_data.csv", row.names = FALSE)
+      
+      # Create Phase and Strategy df's
+      selected_vars <- step_2_create_phase_strategy_df(rv1$df_timevis_data)
+      rv4$df_phase <- selected_vars$df_phase
+      rv5$df_strategy <- selected_vars$df_strategy
+      
+      # Calculate phase / strategy relationships
+      rv2$df_phase_strategy_links <- step_3_create_phase_strategy_links(rv1$df_timevis_data)
+      selected_vars <- step_4_add_country_cols(rv2$df_phase_strategy_links)
+      rv6$df_phase_strategy_channel_links <- selected_vars$df_channel_links
+      rv7$channel_cols <- selected_vars$channel_cols
+      
+  }
   })
   
-  # Add a new strategy or phase
+  ### Add a new strategy or phase ###################################
   observeEvent(input$add_item_btn,{
     # Create next Id
     all_ids <- as.integer(input$media_plan_timeline_ids)
@@ -284,8 +338,8 @@ media_plan_server <- function(input, output, session) {
     req(input$item_end_date)
     
     # If start date equals end date then leave end date out - it's not a ranged item
-    if (input$item_start_date == input$item_end_date) {
-      msg = paste("Error: Start and End dates cannot be the same for item: ", input$item_text)
+    if (input$item_end_date <= input$item_start_date) {
+      msg = paste("Error: Error: End date must be greater than Start date - item: ", input$item_text)
       rv3$error_message = paste("", msg, sep = "\n")
 
     } else {
@@ -302,9 +356,18 @@ media_plan_server <- function(input, output, session) {
     }
   })
   
-  # Remove a strategy or phase
+  ### Remove a strategy or phase ####################################
   observeEvent(input$remove_item_btn, {
     removeItem("media_plan_timeline", input$remove_selected_items)
+  })
+  
+  ### Create Detect change - Phase / Strategy / Country df ##########
+  observeEvent(input$hot_channels$changes$changes, {
+    print(rv7$channel_cols)
+    print(input$hot_channels$changes$changes[[1]][[1]])
+    print(input$hot_channels$changes$changes[[1]][[2]]) # Col
+    print(input$hot_channels$changes$changes[[1]][[3]]) # Old value
+    print(input$hot_channels$changes$changes[[1]][[4]]) # New value
   })
   
 #+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -349,18 +412,39 @@ media_plan_server <- function(input, output, session) {
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 ### Section - Tab - Add Country #####################################
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-  output$hot <- renderRHandsontable({
-    df <-  rv2$df_phase_strategy %>%
-      select("Phase/Strategy Name" = content, "Phase/Strategy" = group)
-   
-    # Add countrt cols to phase/strategy combos
+  output$hot_channels <- renderRHandsontable({
+    print("2")
+    print(class(rv6$df_phase_strategy_channel_links))
+    print(rv6$df_phase_strategy_channel_links)
+    # Display table
+    rhandsontable(rv6$df_phase_strategy_channel_links
+                  ,stretchH = 'all'
+                  ) %>%
+      hot_cols(colWidths = 50)
+  })
+  
+  output$hot_countries <- renderRHandsontable({
+    
+    # Get all the Strategy / Phase links
+    df <-  rv2$df_phase_strategy_links %>%
+      select("Phase" = phase, "Strategy" = strategy)
+    
+    # Add country cols to phase/strategy combos
     country_cols <- as.character(df_country$country_code)
+    
+    for (col in country_cols) {
+      if (length(col) > 12) {
+        print(col)
+        print("Need to split")
+      }
+    }
+    
     df[, country_cols] <- FALSE
     
     # Displey table
     rhandsontable(df)
-    #   hot_context_menu(allowRowEdit = FALSE, allowColEdit = TRUE)
   })
+  
 
 }
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
