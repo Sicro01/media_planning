@@ -149,38 +149,31 @@ step_3_create_phase_strategy_links <- function(df) {
 #+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 ### Section - Function - (4) Add Channel COls #######################
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-step_4_add_country_cols <- function(df) {
+step_4_add_channel_cols <- function(df) {
  
   # Initialise return vars
-  df_channel_links <- NULL
-  channel_cols <- NULL
+  df_phase_strategy_all_channels <- data.frame(phase=character(0), strategy=character(0), stringsAsFactors = FALSE)
   
   if (nrow(df) > 0) {
 
     # Get all the Strategy / Phase links
-    df_channel_links <-  as.data.frame(df) %>%
+    df_phase_strategy_all_channels <-  as.data.frame(df) %>%
       select("Phase" = phase, "Strategy" = strategy)
 
     # Add channel cols to new list
-    channel_cols <- as.character(df_channel$channel)
+    display_channel_cols <- as.character(df_channel$channel)
 
     # Wrap col headers
-    for (col in channel_cols) {
+    for (col in display_channel_cols) {
       if (nchar(col) > 12) {
         col <- strwrap(col, width = 12)
       }
     }
 
     # Add all channels as columns
-    df_channel_links[, channel_cols] <- FALSE
-
-    # Set list to include phase / stretagy and all channel cols
-    channel_cols <- names(df_channel_links)
+    df_phase_strategy_all_channels[, display_channel_cols] <- FALSE
   }
-
-  return_values <- list("df_channel_links" = df_channel_links, "channel_cols" = channel_cols)
-  
-  return(return_values)
+  return(df_phase_strategy_all_channels)
 }
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 ### Section - Initialize before running the UI ######################
@@ -290,16 +283,18 @@ media_plan_server <- function(input, output, session) {
   rv3 <- reactiveValues(error_message = NULL)
   rv4 <- reactiveValues(df_phase = NULL)
   rv5 <- reactiveValues(df_strategy = NULL)
-  rv6 <- reactiveValues(df_phase_strategy_channel_links = NULL)
-  rv7 <- reactiveValues(channel_cols = NULL)
-  
+  rv6 <- reactiveValues(df_phase_strategy_all_channels = data.frame(phase=character(0), strategy=character(0),
+                                                                    channel=character(0), stringsAsFactors = FALSE))
+  rv7 <- reactiveValues(df_phase_strategy_sel_channels = data.frame(phase=character(0), strategy=character(0),
+                                                                    channel=character(0), stringsAsFactors = FALSE))
+        
 #+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 ### Section -  Observations ############################################################
 #+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
   
   # Look for change in data on timevis
   observeEvent(input$media_plan_timeline_data, {
-    print("7")
+    
     # Save current tinevis data as a reactive dataframe
     rv1$df_timevis_data <- as.data.frame(input$media_plan_timeline_data)
     
@@ -326,10 +321,7 @@ media_plan_server <- function(input, output, session) {
       
       # Calculate phase / strategy relationships
       rv2$df_phase_strategy_links <- step_3_create_phase_strategy_links(rv1$df_timevis_data)
-      selected_vars <- step_4_add_country_cols(rv2$df_phase_strategy_links)
-      rv6$df_phase_strategy_channel_links <- selected_vars$df_channel_links
-      rv7$channel_cols <- selected_vars$channel_cols
-      print("8")
+      rv6$df_phase_strategy_all_channels <- step_4_add_channel_cols(rv2$df_phase_strategy_links)
   }
   })
   
@@ -373,34 +365,26 @@ media_plan_server <- function(input, output, session) {
   
   ### Create Detect change - Phase / Strategy / Country df ##########
   observeEvent(input$hot_channels$changes$changes, {
-    # print(input$hot_channels$changes$changes[[1]][[1]]) # ?
-    # print(input$hot_channels$changes$changes[[1]][[2]]) # Col
-    # print(input$hot_channels$changes$changes[[1]][[3]]) # Old value
-    # print(input$hot_channels$changes$changes[[1]][[4]]) # New value
+    
+    # Extract the changed data from the hot table
     row_number = input$hot_channels$changes$changes[[1]][[1]] + 1
-    col_number = input$hot_channels$changes$changes[[1]][[2]] + 1
-    col_name = rv7$channel_cols[col_number]
+    col_number = input$hot_channels$changes$changes[[1]][[2]] - 1
+    col_name = as.character(df_channel$channel[col_number])
     new_value = input$hot_channels$changes$changes[[1]][[4]]
-    phase_value = rv6$df_phase_strategy_channel_links[row_number, 1]
-    strategy_value = rv6$df_phase_strategy_channel_links[row_number, 2]
-    print(row_number)
-  
-    print(col_number)
+    phase_value = rv6$df_phase_strategy_all_channels[row_number, 1]
+    strategy_value = rv6$df_phase_strategy_all_channels[row_number, 2]
     
+    # Add / Delete the changed data to the phase / strategy / channel dataframe
     if (new_value) {
-      df <- rbind(phase_value, strategy_value, col_name)
-      print("True")
-      print(phase_value)
-      print(strategy_value)
-      print(col_name)
+      # Add channel to phase / strategy link
+      new_row <- list(phase = phase_value, strategy = strategy_value, channel = col_name)
+      rv7$df_phase_strategy_sel_channels <- rbind(rv7$df_phase_strategy_sel_channels, new_row, stringsAsFactors = FALSE)
     } else {
+      # Delete channel from phase / strategy link
       print("False")
-      print(phase_value)
-      print(strategy_value)
-      print(col_name)
+      rv7$df_phase_strategy_sel_channels <- rv7$df_phase_strategy_sel_channels %>%
+        filter(!(phase == phase_value & strategy == strategy_value & channel == col_name))
     }
-    print(df)
-    
   })
   
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -448,9 +432,9 @@ media_plan_server <- function(input, output, session) {
   output$hot_channels <- renderRHandsontable({
 
     # Check we have rows to display
-    if (!is.null(nrow(rv6$df_phase_strategy_channel_links))) {
+    if (!is.null(nrow(rv6$df_phase_strategy_all_channels))) {
     # Display table
-      rhandsontable(rv6$df_phase_strategy_channel_links
+      rhandsontable(rv6$df_phase_strategy_all_channels
                     ,stretchH = 'all'
                     ) %>%
         hot_cols(colWidths = 50) %>%
