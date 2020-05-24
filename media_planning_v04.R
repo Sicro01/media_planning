@@ -8,6 +8,7 @@ step_0_initialise <- function() {
   library(DT)
   library(dplyr)
   library(rhandsontable)
+  library(reactable)
 }
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 ### Section - Functions - (1) Load Data  ############################
@@ -146,7 +147,7 @@ step_3_create_phase_strategy_links <- function(df) {
   return(df_phase_strategy_links)
 }
 
-#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 ### Section - Function - (4) Add Channel COls #######################
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 step_4_add_channel_cols <- function(df) {
@@ -175,6 +176,82 @@ step_4_add_channel_cols <- function(df) {
   }
   return(df_phase_strategy_all_channels)
 }
+
+#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+### Section - Function - (5) React Channels #########################
+#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+step_5_react_channels <- function(df) {
+  
+  t <- reactable(df, columns = list(
+    phase = colDef(name = "Phase", defaultSortOrder = "asc")
+    ,strategy = colDef(name = "Strategy", defaultSortOrder = "asc")
+    ,channel = colDef(name = "Channel", defaultSortOrder = "asc")
+    )
+    ,filterable = TRUE
+    ,searchable = TRUE
+    ,highlight = TRUE
+    ,bordered = TRUE
+    ,compact = TRUE
+    ,width = "auto"
+    ,height = "auto"
+    ,groupBy = c("phase","strategy")
+  )
+  return(t)
+}
+
+#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+### Section - Function - (6) Add Country Cols #######################
+#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+step_6_add_country_cols <- function(df) {
+  
+  # Initialise return vars
+  df_phase_strategy_all_countries <- data.frame(phase=character(0), strategy=character(0), channel=character(0), stringsAsFactors = FALSE)
+  
+  if (nrow(df) > 0) {
+    
+    # Get all the Strategy / Phase links
+    df_phase_strategy_all_countries <-  as.data.frame(df) %>%
+      select("Phase" = phase, "Strategy" = strategy, "Channel" = channel)
+    
+    # Add channel cols to new list
+    display_country_cols <- as.character(df_country$country)
+    
+    # Wrap col headers
+    for (col in display_country_cols) {
+      if (nchar(col) > 12) {
+        col <- strwrap(col, width = 12)
+      }
+    }
+    
+    # Add all channels as columns
+    df_phase_strategy_all_countries[, display_country_cols] <- FALSE
+  }
+  return(df_phase_strategy_all_countries)
+}
+
+#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+### Section - Function - (7) React Countries ########################
+#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+step_7_react_countries <- function(df) {
+  
+  t <- reactable(df, columns = list(
+    phase = colDef(name = "Phase", defaultSortOrder = "asc")
+    ,strategy = colDef(name = "Strategy", defaultSortOrder = "asc")
+    ,channel = colDef(name = "Channel", defaultSortOrder = "asc")
+    ,country = colDef(name = "Country", defaultSortOrder = "asc")
+  )
+  ,filterable = TRUE
+  ,searchable = TRUE
+  ,highlight = TRUE
+  ,bordered = TRUE
+  ,compact = TRUE
+  ,width = "auto"
+  ,height = "auto"
+  ,groupBy = c("phase","strategy", "channel")
+  )
+  return(t)
+}
+
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 ### Section - Initialize before running the UI ######################
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -258,10 +335,20 @@ media_plan_ui <- dashboardPage(
           tabItem(tabName = "channels_countries",
                   tabsetPanel(
                     tabPanel("Add Channels",
-                      rHandsontableOutput("hot_channels")
+                             box(solidHeader = TRUE, status = "primary", width = NULL, heheight = NULL,
+                                title = "Select channels for each phase / strategy:",
+                                rHandsontableOutput("hot_channels")),
+                             box(solidHeader = TRUE, status = "primary", width = NULL, heheight = NULL,
+                                title = "Selected channels for each phase / strategy:",
+                                reactableOutput("react_channels"))
                     ),
                     tabPanel("Add Countries",
-                             rHandsontableOutput("hot_countries")
+                             box(solidHeader = TRUE, status = "primary", width = NULL, heheight = NULL,
+                                title = "Select countries for each phase / strategy /  channel:",
+                                rHandsontableOutput("hot_countries")),
+                             box(solidHeader = TRUE, status = "primary", width = NULL, heheight = NULL,
+                                 title = "Selected countries for each phase / strategy / channel:",
+                                 reactableOutput("react_countries"))
                     )
                   ) # end tabsetpanel
           ) # tab end
@@ -287,12 +374,15 @@ media_plan_server <- function(input, output, session) {
                                                                     channel=character(0), stringsAsFactors = FALSE))
   rv7 <- reactiveValues(df_phase_strategy_sel_channels = data.frame(phase=character(0), strategy=character(0),
                                                                     channel=character(0), stringsAsFactors = FALSE))
-        
+  rv8 <- reactiveValues(df_phase_strategy_all_countries = data.frame(phase=character(0), strategy=character(0),
+                                                                     channel=character(0), country=character(0), stringsAsFactors = FALSE))
+  rv9 <- reactiveValues(df_phase_strategy_sel_countries = data.frame(phase=character(0), strategy=character(0),
+                                                                     channel=character(0), country=character(0), stringsAsFactors = FALSE))
+  
 #+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 ### Section -  Observations ############################################################
 #+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-  
-  # Look for change in data on timevis
+  ### Look for change in data on timevis ####################################
   observeEvent(input$media_plan_timeline_data, {
     
     # Save current tinevis data as a reactive dataframe
@@ -363,7 +453,7 @@ media_plan_server <- function(input, output, session) {
     removeItem("media_plan_timeline", input$remove_selected_items)
   })
   
-  ### Create Detect change - Phase / Strategy / Country df ##########
+  ### Detect change - Phase / Strategy / Channel df #################
   observeEvent(input$hot_channels$changes$changes, {
     
     # Extract the changed data from the hot table
@@ -381,12 +471,35 @@ media_plan_server <- function(input, output, session) {
       rv7$df_phase_strategy_sel_channels <- rbind(rv7$df_phase_strategy_sel_channels, new_row, stringsAsFactors = FALSE)
     } else {
       # Delete channel from phase / strategy link
-      print("False")
       rv7$df_phase_strategy_sel_channels <- rv7$df_phase_strategy_sel_channels %>%
         filter(!(phase == phase_value & strategy == strategy_value & channel == col_name))
     }
+    rv8$df_phase_strategy_all_countries <- step_6_add_country_cols(rv7$df_phase_strategy_sel_channels)
   })
   
+  ### Detect change - Phase / Strategy / Channel / Country df #################
+  observeEvent(input$hot_countries$changes$changes, {
+    
+    # Extract the changed data from the hot table
+    row_number = input$hot_countries$changes$changes[[1]][[1]] + 1
+    col_number = input$hot_countries$changes$changes[[1]][[2]] - 2
+    col_name = as.character(df_country$country[col_number])
+    new_value = input$hot_countries$changes$changes[[1]][[4]]
+    phase_value = rv8$df_phase_strategy_all_countries[row_number, 1]
+    strategy_value = rv8$df_phase_strategy_all_countries[row_number, 2]
+    channel_value = rv8$df_phase_strategy_all_countries[row_number, 3]
+    
+    # Add / Delete the changed data to the phase / strategy / channel / country dataframe
+    if (new_value) {
+      # Add Country to phase / strategy / channel link
+      new_row <- list(phase = phase_value, strategy = strategy_value, channel = channel_value, country = col_name)
+      rv9$df_phase_strategy_sel_countries <- rbind(rv9$df_phase_strategy_sel_countries, new_row, stringsAsFactors = FALSE)
+    } else {
+      # Delete channel from phase / strategy link
+      rv9$df_phase_strategy_sel_countries <- rv9$df_phase_strategy_sel_countries %>%
+        filter(!(phase == phase_value & strategy == strategy_value & channel == channel_value & country == col_name))
+    }
+  })
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 ### Section - Tab - Strategy and Phase Outputs ########################
   #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -429,10 +542,11 @@ media_plan_server <- function(input, output, session) {
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 ### Section - Tab - Channels and Country Outputs ####################
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+  ### Channel Outputs ###############################################
   output$hot_channels <- renderRHandsontable({
-
+    
     # Check we have rows to display
-    if (!is.null(nrow(rv6$df_phase_strategy_all_channels))) {
+    if (nrow(rv6$df_phase_strategy_all_channels) > 0) {
     # Display table
       rhandsontable(rv6$df_phase_strategy_all_channels
                     ,stretchH = 'all'
@@ -443,28 +557,32 @@ media_plan_server <- function(input, output, session) {
     }
   })
   
-  output$hot_countries <- renderRHandsontable({
-    
-    # Get all the Strategy / Phase links
-    df <-  rv2$df_phase_strategy_links %>%
-      select("Phase" = phase, "Strategy" = strategy)
-    
-    # Add country cols to phase/strategy combos
-    country_cols <- as.character(df_country$country_code)
-    
-    for (col in country_cols) {
-      if (length(col) > 12) {
-        print(col)
-        print("Need to split")
-      }
-    }
-    
-    df[, country_cols] <- FALSE
-    
-    # Displey table
-    rhandsontable(df)
+  output$react_channels <- renderReactable({
+    t <- step_5_react_channels(rv7$df_phase_strategy_sel_channels)
+    print(t)
   })
   
+  ### Country Outputs ###############################################
+  output$hot_countries <- renderRHandsontable({
+    
+    # Check we have rows to display
+    if (nrow(rv8$df_phase_strategy_all_countries)) {
+      # Display table
+      rhandsontable(rv8$df_phase_strategy_all_countries
+                    ,stretchH = 'all'
+      ) %>%
+        hot_cols(colWidths = 50) %>%
+        hot_col("Phase", readOnly = TRUE) %>%
+        hot_col("Strategy",readOnly = TRUE ) %>%
+        hot_col("Channel",readOnly = TRUE )
+    }
+   
+  })
+  
+  output$react_countries <- renderReactable({
+    t <- step_7_react_countries(rv9$df_phase_strategy_sel_countries)
+    print(t)
+  })
 
 }
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
